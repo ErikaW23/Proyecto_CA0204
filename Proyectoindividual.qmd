@@ -1,0 +1,357 @@
+---
+title: "Proyecto_Individual"
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+#Fuentes bibliograficas y repositorio de git
+
+[Repositorio de git](https://github.com/ErikaW23/Proyecto_CA0204.git)
+
+Larxel. “Board Games.” Www.kaggle.com, Feb. 2021, www.kaggle.com/datasets/andrewmvd/board-games.
+
+Samarasinghe, Dilini. “BoardGameGeek Dataset on Board Games.” Ieee-Dataport.org, 5 July 2021, ieee-dataport.org/open-access/boardgamegeek-dataset-board-games.
+
+#Descargas
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+df <- read.csv("bgg_dataset")
+write.csv(df, file = "bgg_dataset", row.names = TRUE)
+```
+
+#Arreglos al dataframe
+
+```{r}
+str(df)
+
+#Quitar lo inneccesario del dataframe
+df <- df %>%
+  select(-X)
+head(df)
+
+#Verificar valores faltantes
+colSums(is.na(df))
+
+NAs <- df %>%
+  filter(if_any(everything(), is.na))
+NAs
+
+#Quitar los NAs en ID, owned.users y year.published
+df <- df %>%
+  mutate(
+    ID = ifelse(is.na(ID), 0, ID),
+    Owned.Users = ifelse(is.na(Owned.Users), 0, Owned.Users)
+    )
+df <- df %>%
+  filter(!is.na(Year.Published))
+
+colSums(is.na(df))
+head(unique(df))
+```
+
+# Uso de ggplot y graficaciones de varios tipos
+
+# Eliminar valores extremos - Preparación
+
+```{r}
+# Calculo de los límites del rango intercuartílico
+Q1 <- quantile(df$Complexity.Average, 0.25, na.rm = TRUE)
+Q3 <- quantile(df$Complexity.Average, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+limite_inferior <- Q1 - 1.5 * IQR
+limite_superior <- Q3 + 1.5 * IQR
+
+# Histograma de "Complejidad promedio" para observar la presencia de valores extremos
+ggplot(df, aes(x = Complexity.Average)) +
+  geom_histogram(fill = "skyblue", color = "white", bins = 30) +
+  labs(title = "Histograma de complejidad promedio", x = "Complejidad promedio", y = "Frecuencia") +
+  theme_minimal()
+
+# Limpieza de base original
+df_filtered <- df %>%
+  filter(Complexity.Average >= limite_inferior & Complexity.Average <= limite_superior)
+
+# Histograma con datos limpios
+ggplot(df_filtered, aes(x = Complexity.Average)) +
+  geom_histogram(fill = "skyblue", color = "white", bins = 30) +
+  labs(title = "Histograma de complejidad promedio", x = "Complejidad promedio", y = "Frecuencia") +
+  theme_minimal()
+```
+
+# Edad mínima y dificultad promedio
+
+```{r}
+# Gráfico de dispersión de complejidad y edad minima
+df_filtered  %>%
+  filter(Complexity.Average > 0 & Min.Age > 0) %>%
+  ggplot(aes(y = Min.Age, x = Complexity.Average)) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(
+    title = "Relación entre edad mínima y complejidad",
+    y = "Edad mínima recomendada",
+    x = "Complejidad promedio"
+  ) +
+  theme_minimal(base_size = 10)
+
+
+# Crear gráficos de las últimasa décadas para entender bien
+df_filtered %>%
+  filter(Complexity.Average > 0 & Min.Age > 0) %>%
+  filter(Year.Published >= 2000 & Year.Published < 2010) %>%
+  ggplot(aes(y = Min.Age, x = Complexity.Average)) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(
+    title = "Relación entre edad mínima y compejidad",
+    subtitle = "Juegos publicados entre 2000 y 2010",
+    y = "Edad mínima recomendada",
+    x = "Complejidad promedio"
+  ) +
+  theme_minimal(base_size = 10)
+
+df_filtered %>%
+  filter(Complexity.Average > 0 & Min.Age > 0) %>%
+  filter(Year.Published >= 2010 & Year.Published < 2022) %>%
+  ggplot(aes(y = Min.Age, x = Complexity.Average)) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(
+    title = "Relación entre edad mínima y complejidad",
+    subtitle = "Juegos publicados del 2010 al 2021",
+    y = "Edad mínima recomendada",
+    x = "Complejidad promedio"
+  ) +
+  theme_minimal(base_size = 10)
+```
+
+# Año de publicación y clasificación promedio
+
+```{r}
+# Calcular la calificación promedio por año de publicación
+rank_por_año <- df_filtered %>%
+  filter(Year.Published > 1960 & Year.Published < 2022) %>%
+  group_by(Year.Published) %>%
+  summarise(rank_promedio = mean(Rating.Average, na.rm = TRUE)) %>%
+  ungroup()
+
+# Gráfico de la evolución del rango promedio por año
+ggplot(rank_por_año, aes(x = Year.Published, y = rank_promedio)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue", linewidth = 1) +
+  labs(
+    title = "Evolución del rank promedio por año de publicación",
+    x = "Año de publicación",
+    y = "Rank promedio"
+  ) +
+  theme_minimal(base_size = 10)
+```
+
+# Dominio y año de publicación
+
+```{r}
+# Hay muchas clasificaciones Domain, por tanto lo primero es agrupar los dominios en 6 categorías principales
+df_grouped = df %>%
+  filter(!is.na(Domains)) %>%
+           mutate(domain_group = case_when(
+             grepl("Wargame", Domains, ignore.case = TRUE) ~ "Wargames",
+             grepl("Strategy", Domains, ignore.case = TRUE) ~ "Strategy Games",
+             grepl("Family", Domains, ignore.case = TRUE) ~ "Family Games",
+             grepl("Abstract", Domains, ignore.case = TRUE) ~ "Abstract Games",
+             grepl("Children", Domains, ignore.case = TRUE) ~ "Children's Games",
+             grepl("Party", Domains, ignore.case = TRUE) ~ "Party Games",
+             TRUE ~ "Other")) %>%
+  filter(Year.Published > 1959 & Year.Published < 2022) %>%
+  group_by(Year.Published, domain_group) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Year.Published) %>%
+  mutate(mix = n / sum(n))
+
+# Gráfico de barras apiladas
+ggplot(df_grouped, aes(x = Year.Published, y = mix, fill = domain_group)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Distribución de dominios por año de publicación 1960 - 2021",
+    x = "Año de publicación",
+    y = "Distribución de juegos publicados",
+    fill = "Dominio"
+  ) +
+  theme_minimal(base_size = 10)
+
+# Usando data solo del 2000 en adelante para recientes
+df_grouped_2000 = df_grouped %>%
+  filter(Year.Published > 1999 & Year.Published < 2022)
+
+# Gráfico de barras apiladas
+ggplot(df_grouped_2000, aes(x = Year.Published, y = mix, fill = domain_group)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Distribución de dominios por año de publicación 2000 - 2021",
+    x = "Año de publicación",
+    y = "Distribución de juegos publicados",
+    fill = "Dominio"
+  ) +
+  theme_minimal(base_size = 10)
+```
+
+# Tiempo de juego y mínimo de jugadores
+
+```{r}
+# Calculo de los límites del rango intercuartílico
+Q1 <- quantile(df$Play.Time, 0.25, na.rm = TRUE)
+Q3 <- quantile(df$Play.Time, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+limite_inferior <- Q1 - 1.5 * IQR
+limite_superior <- Q3 + 1.5 * IQR
+
+# Limpieza base original
+df_filtered <- df %>%
+  filter(Play.Time >= limite_inferior & Play.Time <= limite_superior)
+
+tiempo_por_jugadores <- df_filtered %>%
+  group_by(Min.Players) %>%
+  summarise(
+    n = n(),
+    Tiempo_Promedio = round(mean(Play.Time), 1),
+    Tiempo_Mediana = round(median(Play.Time), 1)
+  )
+
+# Boxplot 
+ggplot(df_filtered, aes(x = factor(Min.Players), y = Play.Time, fill = factor(Min.Players))) +
+  geom_boxplot(alpha = 0.7, outlier.colour = "red", outlier.alpha = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "white") +
+  labs(
+    title = "Distribución del Tiempo de Juego por Cantidad Mínima de Jugadores",
+    subtitle = "Rombo blanco = media",
+    x = "Cantidad Mínima de Jugadores",
+    y = "Tiempo de Juego (minutos)",
+    fill = "Mín. Jugadores"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "none"
+  )
+```
+
+# Juegos infravalorados
+
+```{r}
+# Crear métrica de infravaloración
+# Un juego está infravalorado si tiene buena calificación pero mal ranking
+df_infravalorado <- df %>%
+  mutate(
+    # Normalizar ambas variables a escala 0-1
+    Rating_Norm = (Rating.Average - min(Rating.Average)) / (max(Rating.Average) - min(Rating.Average)),
+    # Ranking invertido: mejor ranking (menor número) = valor más alto
+    Rank_Norm = 1 - (BGG.Rank - min(BGG.Rank)) / (max(BGG.Rank) - min(BGG.Rank)),
+    # Diferencia: si rating_norm > rank_norm, está infravalorado, de lo contrario está sobrevalorado
+    Undervalued_Score = Rating_Norm - Rank_Norm
+  )
+
+# Top 10 juegos más infravalorados
+top_undervalued <- df_infravalorado %>%
+  arrange(desc(Undervalued_Score)) %>%
+  head(10) %>%
+  select(Name, BGG.Rank, Rating.Average, Undervalued_Score)
+
+cat("Top 10 Juegos Más Infravalorados:\n")
+print(top_undervalued$Name)
+
+# Scatter plot Rating vs Ranking
+ggplot(df_infravalorado, aes(x = BGG.Rank, y = Rating.Average, color = Undervalued_Score)) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_color_gradient2(
+    low = "blue", mid = "white", high = "red",
+    midpoint = 0,
+    name = "Grado de\nInfravaloración"
+  ) +
+  labs(
+    title = "Juegos Infravalorados: Calificación vs Ranking BGG",
+    subtitle = "Rojo = Infravalorados | Azul = Sobrevalorados",
+    x = "Ranking BGG (menor = mejor)",
+    y = "Calificación Promedio"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+# Histograma de score de infravaloración
+ggplot(df_infravalorado, aes(x = Undervalued_Score)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7, color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", size = 1) +
+  labs(
+    title = "Distribución del Grado de Infravaloración",
+    subtitle = "Valores negativos = Sobrevalorados | Valores positivos = Infravalorados",
+    x = "Score de Infravaloración",
+    y = "Cantidad de Juegos"
+  ) +
+  theme_minimal()
+```
+
+# Complejidad y calificación promedio
+
+```{r}
+# Crear categorías de complejidad
+summary(df_infravalorado$Complexity.Average)
+
+board_games <- df_infravalorado %>%
+  mutate(
+    Complexity_Category = cut(
+      Complexity.Average,
+      breaks = c(0, 1.080, 1.670, 2.475, 5),
+      labels = c("Baja", "Media", "Alta", "Muy Alta"),
+      include.lowest = TRUE
+    )
+  )
+
+# Estadísticas por categoría, muestra la elección de los cortes en Commplexity_Category
+complexity_stats <- board_games %>%
+  group_by(Complexity_Category) %>%
+  summarise(
+    n = n(),
+    Rating_Promedio = round(mean(Rating.Average), 2),
+    Rating_Mediana = round(median(Rating.Average), 2)
+  )
+
+complexity_stats
+
+# Scatter plot con línea de tendencia
+ggplot(board_games, aes(x = Complexity.Average, y = Rating.Average)) +
+  geom_point(aes(color = Complexity_Category), alpha = 0.5, size = 2) +
+  geom_smooth(method = "lm", color = "black", se = TRUE) +
+  labs(
+    title = "Relación entre Complejidad y Calificación Promedio",
+    x = "Complejidad Promedio",
+    y = "Calificación Promedio",
+    color = "Nivel de\nComplejidad"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+```
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
